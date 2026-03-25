@@ -133,66 +133,59 @@ pipeline {
 
         stage('🚀 Deploy to Kubernetes') {
             steps {
-                script {
+                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                     sh """
-                        export KUBECONFIG=${KUBECONFIG}
-                        
+                        echo "Using kubeconfig:"
+                        ls -l $KUBECONFIG
+
+                        kubectl cluster-info
+                        kubectl get nodes
+
                         # Create deployment manifest
                         cat > k8s-deployment.yaml <<EOF
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: ${APP_NAME}
-  namespace: ${K8S_NAMESPACE}
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: ${APP_NAME}
-  template:
-    metadata:
-      labels:
-        app: ${APP_NAME}
-    spec:
-      containers:
-      - name: ${APP_NAME}
-        image: ${DOCKER_IMAGE_VERSION}
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: ${APP_NAME}
+          namespace: ${K8S_NAMESPACE}
+        spec:
+          replicas: 2
+          selector:
+            matchLabels:
+              app: ${APP_NAME}
+          template:
+            metadata:
+              labels:
+                app: ${APP_NAME}
+            spec:
+              containers:
+              - name: ${APP_NAME}
+              image: ${DOCKER_IMAGE_VERSION}
+              ports:
+              - containerPort: 8080
+      ---
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: ${APP_NAME}
+        namespace: ${K8S_NAMESPACE}
+      spec:
+        type: NodePort
         ports:
-        - containerPort: 8080
-        resources:
-          limits:
-            cpu: 500m
-            memory: 512Mi
-          requests:
-            cpu: 250m
-            memory: 256Mi
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: ${APP_NAME}
-  namespace: ${K8S_NAMESPACE}
-spec:
-  type: NodePort
-  ports:
-  - port: 8080
-    targetPort: 8080
-    nodePort: 30080
-    protocol: TCP
-  selector:
-    app: ${APP_NAME}
-EOF
-                        
-                        # Apply deployment
-                        kubectl apply -f k8s-deployment.yaml
-                        
-                        # Wait for rollout
-                        kubectl rollout status deployment/${APP_NAME} -n ${K8S_NAMESPACE} --timeout=5m
-                    """
-                }
-            }
-        }
+        - port: 8080
+          targetPort: 8080
+          nodePort: 30080
+        selector:
+          app: ${APP_NAME}
+      EOF
 
+                      kubectl apply -f k8s-deployment.yaml
+                      kubectl rollout status deployment/${APP_NAME} -n ${K8S_NAMESPACE} --timeout=5m
+                       
+                 """              
+              }
+          }
+      }
         stage('✅ Verify Deployment') {
             steps {
                 sh """
